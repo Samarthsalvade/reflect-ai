@@ -17,10 +17,9 @@ export const publicEnv = {
 };
 
 export const serverEnv = {
-  openaiKey: () => required("OPENAI_API_KEY"),
-  chatModel: () => process.env.OPENAI_CHAT_MODEL || "gpt-4.1-mini",
-  embeddingModel: () => process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small",
+  groqKey: () => required("GROQ_API_KEY"),
+  chatModel: () => process.env.GROQ_CHAT_MODEL || "openai/gpt-oss-20b",
   askLimitPerHour: () => numberOr("AI_ASK_LIMIT_PER_HOUR", 30),
-  matchThreshold: () => numberOr("RAG_MATCH_THRESHOLD", 0.25),
+  matchThreshold: () => numberOr("RAG_MATCH_THRESHOLD", 0.65),
   matchCount: () => numberOr("RAG_MATCH_COUNT", 5),
 };

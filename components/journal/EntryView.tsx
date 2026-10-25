@@ -45,7 +45,7 @@ export function EntryView({ entry, indexingFailed, highlight }: Props) {
       router.replace(`/journal/${entry.id}`);
       router.refresh();
     } else {
-      setMessage(body.indexing?.error ?? "Indexing failed again. Check the OpenAI configuration.");
+      setMessage(body.indexing?.error ?? "Indexing failed again. Check the Hugging Face configuration.");
     }
   }
 

@@ -1,7 +1,7 @@
 // Multi-tenant security tests against a real Supabase project.
 // They talk to the database exactly as the app does (publishable key + a signed-in
 // user), so RLS and the SECURITY INVOKER functions are what's being tested.
-// No OpenAI calls: vectors are synthetic, which also makes similarity deterministic.
+// No Hugging Face calls: vectors are synthetic, which also makes similarity deterministic.
 //
 //   npm run test:integration
 //
@@ -24,7 +24,7 @@ const configured = Boolean(
 );
 
 // A unit vector pointing along one axis: cosine similarity 1 with itself, 0 with other axes.
-const axis = (i: number) => `[${Array.from({ length: 1536 }, (_, j) => (j === i ? 1 : 0)).join(",")}]`;
+const axis = (i: number) => `[${Array.from({ length: 384 }, (_, j) => (j === i ? 1 : 0)).join(",")}]`;
 
 async function signIn(email: string, password: string): Promise<SupabaseClient> {
   const client = createClient(env.NEXT_PUBLIC_SUPABASE_URL!, env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
@@ -58,7 +58,7 @@ describe.skipIf(!configured)("tenant isolation (RLS + RPC)", () => {
     if (error) throw error;
     entry = data;
 
-    const { data: applied, error: rpcError } = await a.rpc("replace_entry_chunks", {
+    const { data: applied, error: rpcError } = await a.rpc("replace_entry_chunks_bge", {
       p_entry_id: entry.id,
       p_expected_updated_at: entry.updated_at,
       p_chunks: [{ chunk_index: 0, content: "My secret project is Project Atlas.", embedding: axis(7) }],
@@ -74,7 +74,7 @@ describe.skipIf(!configured)("tenant isolation (RLS + RPC)", () => {
   it("owner can read their entry and its chunks", async () => {
     const { data } = await a.from("journal_entries").select("id, index_status").eq("id", entry.id).single();
     expect(data?.index_status).toBe("ready");
-    const { count } = await a.from("journal_chunks").select("id", { count: "exact", head: true }).eq("entry_id", entry.id);
+    const { count } = await a.from("journal_chunks_bge").select("id", { count: "exact", head: true }).eq("entry_id", entry.id);
     expect(count).toBe(1);
   });
 
@@ -93,23 +93,23 @@ describe.skipIf(!configured)("tenant isolation (RLS + RPC)", () => {
   });
 
   it("another user cannot read the chunks directly", async () => {
-    const { data } = await b.from("journal_chunks").select("content").eq("entry_id", entry.id);
+    const { data } = await b.from("journal_chunks_bge").select("content").eq("entry_id", entry.id);
     expect(data).toEqual([]);
   });
 
   it("semantic search never returns another user's chunks", async () => {
     // Same query vector as A's chunk: a perfect match if isolation were broken.
-    const own = await a.rpc("match_journal_chunks", { query_embedding: axis(7), match_count: 5, match_threshold: 0.5 });
+    const own = await a.rpc("match_journal_chunks_bge", { query_embedding: axis(7), match_count: 5, match_threshold: 0.5 });
     expect(own.error).toBeNull();
     expect((own.data ?? []).map((r: { entry_id: string }) => r.entry_id)).toContain(entry.id);
 
-    const other = await b.rpc("match_journal_chunks", { query_embedding: axis(7), match_count: 10, match_threshold: 0 });
+    const other = await b.rpc("match_journal_chunks_bge", { query_embedding: axis(7), match_count: 10, match_threshold: 0 });
     expect(other.error).toBeNull();
     expect((other.data ?? []).some((r: { entry_id: string }) => r.entry_id === entry.id)).toBe(false);
   });
 
   it("another user cannot write chunks into someone else's entry", async () => {
-    const res = await b.rpc("replace_entry_chunks", {
+    const res = await b.rpc("replace_entry_chunks_bge", {
       p_entry_id: entry.id,
       p_expected_updated_at: entry.updated_at,
       p_chunks: [{ chunk_index: 0, content: "injected", embedding: axis(1) }],
@@ -117,15 +117,15 @@ describe.skipIf(!configured)("tenant isolation (RLS + RPC)", () => {
     expect(res.error).not.toBeNull();
 
     const direct = await b
-      .from("journal_chunks")
-      .insert({ entry_id: entry.id, chunk_index: 99, content: "injected", embedding: axis(1) });
+      .from("journal_chunks_bge")
+      .insert({ entry_id: entry.id, chunk_index: 99, content: "injected", embedding: axis(1), entry_updated_at: entry.updated_at });
     expect(direct.error).not.toBeNull();
   });
 
   it("anonymous callers get nothing", async () => {
     const read = await anon.from("journal_entries").select("id").eq("id", entry.id);
     expect(read.data ?? []).toEqual([]);
-    const rpc = await anon.rpc("match_journal_chunks", { query_embedding: axis(7) });
+    const rpc = await anon.rpc("match_journal_chunks_bge", { query_embedding: axis(7) });
     expect(rpc.error).not.toBeNull();
   });
 
@@ -139,14 +139,14 @@ describe.skipIf(!configured)("tenant isolation (RLS + RPC)", () => {
     expect(edited!.updated_at).not.toBe(entry.updated_at);
 
     // An embedding job that started before the edit must not overwrite the index.
-    const stale = await a.rpc("replace_entry_chunks", {
+    const stale = await a.rpc("replace_entry_chunks_bge", {
       p_entry_id: entry.id,
       p_expected_updated_at: entry.updated_at,
       p_chunks: [{ chunk_index: 0, content: "stale", embedding: axis(3) }],
     });
     expect(stale.data).toBe(false);
 
-    const fresh = await a.rpc("replace_entry_chunks", {
+    const fresh = await a.rpc("replace_entry_chunks_bge", {
       p_entry_id: entry.id,
       p_expected_updated_at: edited!.updated_at,
       p_chunks: [
@@ -156,14 +156,29 @@ describe.skipIf(!configured)("tenant isolation (RLS + RPC)", () => {
     });
     expect(fresh.data).toBe(true);
 
-    const { data: chunks } = await a.from("journal_chunks").select("content").eq("entry_id", entry.id).order("chunk_index");
+    const { data: chunks } = await a.from("journal_chunks_bge").select("content").eq("entry_id", entry.id).order("chunk_index");
     expect(chunks?.map((c) => c.content)).toEqual(["Project Atlas is now called", "Project Borealis."]);
 
     // The superseded vector is gone from search.
-    const old = await a.rpc("match_journal_chunks", { query_embedding: axis(7), match_count: 5, match_threshold: 0.5 });
+    const old = await a.rpc("match_journal_chunks_bge", { query_embedding: axis(7), match_count: 5, match_threshold: 0.5 });
     expect((old.data ?? []).some((r: { entry_id: string }) => r.entry_id === entry.id)).toBe(false);
 
     entry = edited!;
+  });
+
+  it("rejects wrong dimensions atomically and retains journal text and vectors", async () => {
+    const before = await a.from("journal_chunks_bge").select("id, content").eq("entry_id", entry.id).order("chunk_index");
+    const journal = await a.from("journal_entries").select("content").eq("id", entry.id).single();
+    const bad = await a.rpc("replace_entry_chunks_bge", {
+      p_entry_id: entry.id, p_expected_updated_at: entry.updated_at,
+      p_chunks: [{ chunk_index: 0, content: "invalid", embedding: "[1,0]" }],
+    });
+    expect(bad.error).not.toBeNull();
+    const after = await a.from("journal_chunks_bge").select("id, content").eq("entry_id", entry.id).order("chunk_index");
+    expect(after.error).toBeNull();
+    expect(after.data).toEqual(before.data);
+    const retained = await a.from("journal_entries").select("content").eq("id", entry.id).single();
+    expect(retained.data).toEqual(journal.data);
   });
 
   it("deleting an entry removes its vectors", async () => {
@@ -172,16 +187,16 @@ describe.skipIf(!configured)("tenant isolation (RLS + RPC)", () => {
       .insert({ title: "[test] temp", content: "temporary", entry_date: "2026-01-16" })
       .select("id, updated_at")
       .single<Entry>();
-    await a.rpc("replace_entry_chunks", {
+    await a.rpc("replace_entry_chunks_bge", {
       p_entry_id: tmp!.id,
       p_expected_updated_at: tmp!.updated_at,
       p_chunks: [{ chunk_index: 0, content: "temporary", embedding: axis(20) }],
     });
 
     await a.from("journal_entries").delete().eq("id", tmp!.id);
-    const { count } = await a.from("journal_chunks").select("id", { count: "exact", head: true }).eq("entry_id", tmp!.id);
+    const { count } = await a.from("journal_chunks_bge").select("id", { count: "exact", head: true }).eq("entry_id", tmp!.id);
     expect(count).toBe(0);
-    const search = await a.rpc("match_journal_chunks", { query_embedding: axis(20), match_count: 5, match_threshold: 0.5 });
+    const search = await a.rpc("match_journal_chunks_bge", { query_embedding: axis(20), match_count: 5, match_threshold: 0.5 });
     expect(search.data ?? []).toEqual([]);
   });
 });

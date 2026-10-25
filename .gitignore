@@ -1,3 +1,6 @@
+# Downloaded local embedding model
+.cache/
+
 # dependencies
 node_modules/
 

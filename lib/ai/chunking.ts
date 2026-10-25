@@ -1,11 +1,11 @@
 // Splits journal text into overlapping chunks for embedding.
-// Sizes are in characters; ~4 chars ≈ 1 token for English, so the defaults
-// (2,000 / 300) land near the 500-token chunk / 75-token overlap guideline.
+// Conservative character windows leave room for title/date within BGE’s 512-token
+// context. Token-dense input may still be truncated by the provider.
 
 export type ChunkOptions = { maxChars?: number; overlapChars?: number };
 
-export const DEFAULT_MAX_CHARS = 2000;
-export const DEFAULT_OVERLAP_CHARS = 300;
+export const DEFAULT_MAX_CHARS = 1000;
+export const DEFAULT_OVERLAP_CHARS = 150;
 
 export function chunkText(text: string, options: ChunkOptions = {}): string[] {
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;

@@ -7,7 +7,7 @@
 
 | Time | Show | Say (roughly) |
 |---|---|---|
-| 0:00–0:20 | README architecture diagram or the login page | "ReflectAI is a private journal you can ask questions. It's built with Next.js, Supabase with pgvector, and OpenAI. Answers come only from your own entries, with citations." |
+| 0:00–0:20 | README architecture diagram or the login page | "ReflectAI is a private journal you can ask questions. It's built with Next.js, Supabase with pgvector, Groq chat, and free local Transformers.js BGE embeddings. Answers come only from your own entries, with citations." |
 | 0:20–0:40 | Sign in as A → dashboard | "Each user sees only their entries. The green badge means the entry has been chunked, embedded and stored in pgvector." |
 | 0:40–1:10 | **New entry** → type a short one ("Booked a trip to Lisbon for November") → save → open it → **Edit** a word → save → **Delete** a throwaway entry | "Saving runs the indexing pipeline: chunk, embed, then swap the vectors atomically. Editing re-indexes, and deleting removes the vectors too." |
 | 1:10–1:50 | **Ask my journal** → "How did my interviews go?" → hover an `[S1]` marker → click a source card → the highlighted passage | "The question is embedded and matched against my chunks only. The model answers from those excerpts, and the server drops any citation it didn't retrieve. Clicking a source jumps to that passage." Then ask "What's the capital of Peru?" → "Off-topic questions get no-evidence instead of a guess." |

@@ -1,10 +1,9 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { openai } from "@/lib/ai/openai";
+import { chatCompletion } from "@/lib/ai/groq";
 import { retrieveChunks } from "@/lib/ai/retrieval";
 import { labelChunks, resolveSources, stripUnknownMarkers, type Source } from "@/lib/ai/citations";
-import { serverEnv } from "@/lib/env";
 
 export const INSUFFICIENT_EVIDENCE =
   "I couldn't find anything in your journal that answers this. Try rephrasing, or write an entry about it first.";
@@ -47,17 +46,11 @@ export async function askJournal(supabase: SupabaseClient, question: string): Pr
     .map((c) => `[${c.label}] "${c.title}" (${c.entry_date})\n${c.content}`)
     .join("\n\n---\n\n");
 
-  const completion = await openai().chat.completions.create({
-    model: serverEnv.chatModel(),
-    temperature: 0.2,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: `<excerpts>\n${context}\n</excerpts>\n\nQuestion: ${question}` },
-    ],
-  });
+  const raw = await chatCompletion([
+    { role: "system", content: SYSTEM_PROMPT },
+    { role: "user", content: `<excerpts>\n${context}\n</excerpts>\n\nQuestion: ${question}` },
+  ]);
 
-  const raw = completion.choices[0]?.message?.content ?? "";
   let parsed: z.infer<typeof ModelOutput>;
   try {
     parsed = ModelOutput.parse(JSON.parse(raw));

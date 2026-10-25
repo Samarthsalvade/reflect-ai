@@ -6,7 +6,7 @@
 //
 // Re-running replaces only the entries this script created (titles start with "◆ ").
 import { config } from "dotenv";
-import OpenAI from "openai";
+import { embedTexts, toPgVector } from "../lib/ai/local-embeddings";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { chunkText, embeddingInput } from "../lib/ai/chunking";
 
@@ -100,9 +100,6 @@ function requireEnv(name: string): string {
   return v;
 }
 
-const openai = new OpenAI({ apiKey: requireEnv("OPENAI_API_KEY") });
-const embeddingModel = process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small";
-
 async function signIn(email: string, password: string) {
   const client = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"), {
     auth: { persistSession: false },
@@ -125,18 +122,14 @@ async function seed(label: string, client: SupabaseClient, entries: Seed[]) {
     if (error) throw error;
 
     const chunks = chunkText(row.content);
-    const res = await openai.embeddings.create({
-      model: embeddingModel,
-      dimensions: 1536,
-      input: chunks.map((c) => embeddingInput(row.title, row.entry_date, c)),
-    });
-    const { error: rpcError } = await client.rpc("replace_entry_chunks", {
+    const vectors = await embedTexts(chunks.map((c) => embeddingInput(row.title, row.entry_date, c)));
+    const { error: rpcError } = await client.rpc("replace_entry_chunks_bge", {
       p_entry_id: row.id,
       p_expected_updated_at: row.updated_at,
       p_chunks: chunks.map((content, i) => ({
         chunk_index: i,
         content,
-        embedding: `[${res.data[i].embedding.join(",")}]`,
+        embedding: toPgVector(vectors[i]),
       })),
     });
     if (rpcError) throw rpcError;

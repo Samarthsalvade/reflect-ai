@@ -1,3 +1,4 @@
+export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { error, json, parseBody, requireUser } from "@/lib/api/http";
 import { AskQuestion } from "@/lib/journal/schema";

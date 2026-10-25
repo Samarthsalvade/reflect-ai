@@ -9,7 +9,7 @@ type IndexableEntry = Pick<JournalEntry, "id" | "title" | "content" | "entry_dat
 export type IndexOutcome = { status: IndexStatus; error?: string; chunks?: number };
 
 // Chunk → embed → atomically swap vectors.
-// Embeddings are built BEFORE anything is deleted, so if OpenAI fails the
+// Embeddings are built BEFORE anything is deleted, so if local inference fails the
 // entry keeps its last working index and is flagged "failed" for a retry.
 export async function indexEntry(supabase: SupabaseClient, entry: IndexableEntry): Promise<IndexOutcome> {
   try {
@@ -22,7 +22,7 @@ export async function indexEntry(supabase: SupabaseClient, entry: IndexableEntry
       embedding: toPgVector(vectors[i]),
     }));
 
-    const { data: applied, error } = await supabase.rpc("replace_entry_chunks", {
+    const { data: applied, error } = await supabase.rpc("replace_entry_chunks_bge", {
       p_entry_id: entry.id,
       // Passed back verbatim (microsecond precision) — never round-tripped through Date.
       p_expected_updated_at: entry.updated_at,

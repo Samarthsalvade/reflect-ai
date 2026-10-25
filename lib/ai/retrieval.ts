@@ -13,11 +13,11 @@ export type RetrievedChunk = {
   similarity: number;
 };
 
-// Runs as the signed-in user: match_journal_chunks is SECURITY INVOKER and
+// Runs as the signed-in user: match_journal_chunks_bge is SECURITY INVOKER and
 // filters on auth.uid(), so another user's chunks are unreachable from here.
 export async function retrieveChunks(supabase: SupabaseClient, question: string): Promise<RetrievedChunk[]> {
   const queryEmbedding = await embedText(question);
-  const { data, error } = await supabase.rpc("match_journal_chunks", {
+  const { data, error } = await supabase.rpc("match_journal_chunks_bge", {
     query_embedding: toPgVector(queryEmbedding),
     match_count: serverEnv.matchCount(),
     match_threshold: serverEnv.matchThreshold(),

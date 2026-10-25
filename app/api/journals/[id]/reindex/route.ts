@@ -1,3 +1,4 @@
+export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { error, json, requireUser } from "@/lib/api/http";
 import { ENTRY_COLUMNS, EntryId, type JournalEntry } from "@/lib/journal/schema";

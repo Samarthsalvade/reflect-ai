@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { authErrorMessage } from "@/lib/supabase/auth-errors";
 
 export type AuthState = { error?: string; message?: string; email?: string };
 
@@ -26,7 +27,7 @@ export async function login(_prev: AuthState, formData: FormData): Promise<AuthS
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword(parsed.data);
   // One message for wrong email and wrong password: no account enumeration.
-  if (error) return { error: "Incorrect email or password.", email };
+  if (error) return { error: authErrorMessage(error, "login"), email };
 
   redirect(safeNext(formData.get("next")));
 }
@@ -42,7 +43,7 @@ export async function signup(_prev: AuthState, formData: FormData): Promise<Auth
     ...parsed.data,
     options: { emailRedirectTo: `${origin}/auth/confirm` },
   });
-  if (error) return { error: error.message, email };
+  if (error) return { error: authErrorMessage(error, "signup"), email };
 
   // Email confirmation disabled in Supabase → we already have a session.
   if (data.session) redirect("/dashboard");
